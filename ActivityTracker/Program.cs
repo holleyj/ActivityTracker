@@ -1,5 +1,8 @@
-﻿using NLog;
-using System.Data;
+﻿using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using NLog;
 
 namespace ActivityTracker
 {
@@ -7,6 +10,7 @@ namespace ActivityTracker
     {
         private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
         private static Dictionary<string, DateTime> activeActivities = new Dictionary<string, DateTime>();
+        private static Dictionary<string, DateTime> pausedActivities = new Dictionary<string, DateTime>();
         private static List<Activity> activityLog = new List<Activity>();
         private const string LogFilePath = @"C:\log\timeReport.csv";
 
@@ -17,7 +21,7 @@ namespace ActivityTracker
 
             while (prompt != "exit")
             {
-                Console.WriteLine("Enter command (start/stop/add/list/exit):");
+                Console.WriteLine("Enter command (start/stop/pause/restart/add/list/open/exit):");
                 prompt = Console.ReadLine();
 
                 var x = prompt.Split(" ");
@@ -29,7 +33,6 @@ namespace ActivityTracker
                     arg = x[1];
                 }
 
-
                 switch (command.ToLower())
                 {
                     case "start":
@@ -38,11 +41,23 @@ namespace ActivityTracker
                     case "stop":
                         StopActivity(arg);
                         break;
+                    case "pause":
+                        PauseActivity(arg);
+                        break;
+                    case "restart":
+                        RestartActivity(arg);
+                        break;
                     case "add":
                         AddActivity();
                         break;
                     case "list":
                         ListActivities();
+                        break;
+                    case "open":
+                        OpenLogFile();
+                        break;
+                    case "save":
+                        GenerateReport();
                         break;
                     case "exit":
                         GenerateReport();
@@ -101,7 +116,6 @@ namespace ActivityTracker
                 DateTime startTime = activeActivities[activityName];
                 DateTime endTime = DateTime.Now;
                 double hoursSpent = Math.Round((endTime - startTime).TotalHours, 2);
-                
 
                 activityLog.Add(new Activity
                 {
@@ -119,6 +133,73 @@ namespace ActivityTracker
             {
                 Console.WriteLine("Invalid activity number.");
             }
+
+
+            ListActivities();
+        }
+
+        private static void PauseActivity(string arg)
+        {
+            string input;
+            if (arg == string.Empty)
+            {
+                Console.WriteLine("Enter the number of the activity to pause:");
+                input = Console.ReadLine();
+            }
+            else
+            {
+                input = arg;
+            }
+            if (int.TryParse(input, out int activityNumber) && activityNumber > 0 && activityNumber <= activeActivities.Count)
+            {
+                var activityName = new List<string>(activeActivities.Keys)[activityNumber - 1];
+                DateTime startTime = activeActivities[activityName];
+                DateTime pauseTime = DateTime.Now;
+                double hoursSpent = Math.Round((pauseTime - startTime).TotalHours, 2);
+
+                pausedActivities[activityName] = pauseTime;
+
+                activeActivities.Remove(activityName);
+                Console.WriteLine($"Paused activity: {activityName}. Time spent: {hoursSpent} hours so far");
+                Logger.Info($"Paused activity: {activityName}. Time spent: {hoursSpent} hours so far");
+            }
+            else
+            {
+                Console.WriteLine("Invalid activity number.");
+            }
+
+            ListActivities();
+        }
+
+        private static void RestartActivity(string arg)
+        {
+            string input;
+            if (arg == string.Empty)
+            {
+                Console.WriteLine("Enter the number of the activity to restart:");
+                input = Console.ReadLine();
+            }
+            else
+            {
+                input = arg;
+            }
+            if (int.TryParse(input, out int activityNumber) && activityNumber > 0 && activityNumber <= pausedActivities.Count)
+            {
+                var activityName = new List<string>(pausedActivities.Keys)[activityNumber - 1];
+                DateTime pauseTime = pausedActivities[activityName];
+
+                activeActivities[activityName] = pauseTime;
+
+                pausedActivities.Remove(activityName);
+                Console.WriteLine($"Restarted activity: {activityName}");
+                Logger.Info($"Restarted activity: {activityName}");
+            }
+            else
+            {
+                Console.WriteLine("Invalid activity number.");
+            }
+
+            ListActivities();
         }
 
         private static void AddActivity()
@@ -149,60 +230,69 @@ namespace ActivityTracker
         {
             if (activeActivities.Count == 0)
             {
-                Console.WriteLine("No active activities.");
-                return;
+                Console.WriteLine("\nNo active activities.");
+            }
+            else
+            {
+                Console.WriteLine("\nActive activities:");
             }
 
-            Console.WriteLine("\nActive activities:");
             int index = 1;
             foreach (var activity in activeActivities)
             {
                 Console.WriteLine($"{index}. {activity.Key} (Started at: {activity.Value})");
                 index++;
             }
+
             Console.WriteLine("");
+
+            if (pausedActivities.Count > 0)
+            {
+                Console.WriteLine("Paused activities:");
+                index = 1;
+                foreach (var activity in pausedActivities)
+                {
+                    Console.WriteLine($"{index}. {activity.Key} (Paused at: {activity.Value})");
+                    index++;
+                }
+                Console.WriteLine("");
+            }
+        }
+
+        private static void OpenLogFile()
+        {
+            try
+            {
+                Process.Start(@"C:\Program Files\Notepad++\notepad++.exe", LogFilePath);
+                Logger.Info("Opened log file with Notepad++");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error opening log file: {ex.Message}");
+                Logger.Error($"Error opening log file: {ex.Message}");
+            }
         }
 
         private static void GenerateReport()
         {
             int index = activeActivities.Count;
-            var loopActivities = activeActivities;
+            var loopActivities = new Dictionary<string, DateTime>(activeActivities);
             foreach (var activity in loopActivities)
             {
-                Console.WriteLine(index);
                 StopActivity(index.ToString());
                 index--;
             }
-            //Application excelApp = new Application();
-            //Workbook workbook = null;
-            //Worksheet worksheet = null;
 
             try
             {
-                //workbook = excelApp.Workbooks.Add();
-                //worksheet = (Worksheet)workbook.Worksheets[1];
-                //worksheet.Name = "Activity Log";
-
-                //((Microsoft.Office.Interop.Excel.Range)worksheet.Cells[1, 1]).Value = "Activity Name";
-                //((Microsoft.Office.Interop.Excel.Range)worksheet.Cells[1, 2]).Value = "Start Time";
-                //((Microsoft.Office.Interop.Excel.Range)worksheet.Cells[1, 3]).Value = "End Time";
-                //((Microsoft.Office.Interop.Excel.Range)worksheet.Cells[1, 4]).Value = "Hours Spent";
-
                 List<string> lines = new();
                 foreach (var activity in activityLog)
                 {
-
-                    string row = $"{activity.Name},{activity.StartTime.ToString()},{activity.EndTime.ToString()},{activity.HoursSpent}";
+                    string row = $"{activity.Name},{activity.StartTime},{activity.EndTime},{activity.HoursSpent}";
                     lines.Add(row);
-                    //((Microsoft.Office.Interop.Excel.Range)worksheet.Cells[row, 1]).Value = activity.Name;
-                    //((Microsoft.Office.Interop.Excel.Range)worksheet.Cells[row, 2]).Value = activity.StartTime.ToString();
-                    //((Microsoft.Office.Interop.Excel.Range)worksheet.Cells[row, 3]).Value = activity.EndTime.ToString();
-                    //((Microsoft.Office.Interop.Excel.Range)worksheet.Cells[row, 4]).Value = activity.HoursSpent;
-                    //row++;
                 }
                 File.AppendAllLines(LogFilePath, lines);
 
-                //workbook.SaveAs(LogFilePath);
                 Console.WriteLine($"Report generated: {LogFilePath}");
                 Logger.Info($"Report generated: {LogFilePath}");
             }
@@ -210,20 +300,6 @@ namespace ActivityTracker
             {
                 Console.WriteLine($"Error generating report: {ex.Message}");
                 Logger.Error($"Error generating report: {ex.Message}");
-            }
-            finally
-            {
-                //if (workbook != null)
-                //{
-                //    workbook.Close();
-                //    Marshal.ReleaseComObject(workbook);
-                //}
-
-                //if (excelApp != null)
-                //{
-                //    excelApp.Quit();
-                //    Marshal.ReleaseComObject(excelApp);
-                //}
             }
         }
     }
